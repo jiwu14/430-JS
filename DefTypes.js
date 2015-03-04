@@ -48,9 +48,9 @@ var LamC = function(params, body){
 }
 ExtendClass(LamC, ExprC);
 
-var AppC = function(body, args) {
+var AppC = function(lam, args) {
    ExprC.apply(this);
-   this.body = body;
+   this.lam = lam;
    this.args = args;
 }
 ExtendClass(AppC, ExprC);
