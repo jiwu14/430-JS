@@ -2,11 +2,52 @@
 
 load("DefTypes.js");
 
-var test = function(value, expected) {
-   if (value.toSource() !== expected.toSource()) {
-      print("Failure: Expected "+expected.toSource()+", Got "+value.toSource());
+//convert value to string
+var serialize = function(value) {
+   if (value instanceof Value) {
+      switch(value.constructor) {
+         case NumV:
+            return value.val.toString();
+            break;
+         case BoolV:
+            if (value.val) {
+               return "true";
+            }
+            return "false";
+            break;
+         case ClosV:
+            return "#<procedure>";
+            break;
+         default:
+            throw "Invalid value";
+      }
+   } else {
+      return value;
    }
 }
+
+//fun - function to test
+//args - argument array to pass to function
+//expected - expected return value
+var test = function(fun, args, expected) {
+   let ret;
+   try {
+      ret = serialize(fun.apply(null, args));
+      if (ret !== expected) {
+         print("Failure: Expected "+expected+", Got "+ret);
+      }
+   } catch(e) {
+      if (e !== expected) {
+         print("Failure: Expected "+expected+", Got "+e);
+      }
+   }
+   
+}
+
+test(serialize, [new ClosV()], "#<procedure>");
+test(serialize, [new NumV(24)], "24");
+test(serialize, [new BoolV(true)], "true");
+test(serialize, [new BoolV(false)], "false");
 
 //clone the environment
 var GetCloneEnv = function(env) {
@@ -27,8 +68,20 @@ var ensureNum = function(value) {
 
 //do the interps
 var interp = function interp(expr, env) {
+   let interpS = function(ex) {
+      return interp(ex, env);
+   }
    // define build-env function here, so it's in scope
-   
+   let buildEnv = function(params, args, clos) {
+      if (params.length !== args.length) {
+         throw "Wrong arity";
+      }
+      let argVals = args.map(interpS);
+      for (let ndx = 0; ndx < params.length; ndx++) {
+         clos[params[ndx].val] = argVals[ndx];
+      }
+      return clos;
+   }
 
    if (expr instanceof ExprC) {
       if ((typeof env) === 'undefined') {
@@ -93,7 +146,7 @@ var interp = function interp(expr, env) {
             let lambda = interp(expr.lam, env);
             if (lambda instanceof ClosV) {
                //build env
-               //call interp
+               return interp(lambda.body, buildEnv(lambda.params, expr.args, lambda.env));
             }
             throw "Not a function";
          default:
@@ -104,41 +157,17 @@ var interp = function interp(expr, env) {
    }
 }
 
-test(interp(new BinopC("+", new NumC(2), new NumC(7)), {}), new NumV(9));
-test(interp(new IfC(new BinopC("eq?", new BoolC(true), new BoolC(false)),
-                    new NumC(10),
-                    new BinopC("*", new IdC("x"), new IdC("y"))),
-            {x: new NumV(2),
-             y: new NumV(11)}),
-     new NumV(22));
-
-//convert value to string
-var serialize = function(value) {
-   if (value instanceof Value) {
-      switch(value.constructor) {
-         case NumV:
-            return value.val.toString();
-            break;
-         case BoolV:
-            if (value.val) {
-               return "true";
-            }
-            return "false";
-            break;
-         case ClosV:
-            return "#<procedure>";
-            break;
-         default:
-            throw "Invalid value";
-      }
-   } else {
-      throw "Not a value";
-   }
+var testEval = function(expr, expected) {
+   test(interp, [expr, {}], expected);
 }
 
-test(serialize(new ClosV()), "#<procedure>");
-test(serialize(new NumV(24)), "24");
-test(serialize(new BoolV(true)), "true");
-test(serialize(new BoolV(false)), "false");
+testEval(new BinopC("+", new NumC(2), new NumC(7)), "9");
+test(interp, [new IfC(new BinopC("eq?", new BoolC(true), new BoolC(false)),
+                      new NumC(10),
+                      new BinopC("*", new IdC("x"), new IdC("y"))),
+             {x: new NumV(2),
+              y: new NumV(11)}],
+     "22");
+testEval(new AppC(new LamC([new IdC("x")], new BinopC("*", new IdC("x"), new NumC(2))),
+               [new NumC(70)]), "140");            
 
-//shit tons of tests:
