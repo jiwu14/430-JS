@@ -7,13 +7,8 @@ var serialize = function(value) {
    if (value instanceof Value) {
       switch(value.constructor) {
          case NumV:
-            return value.val.toString();
-            break;
          case BoolV:
-            if (value.val) {
-               return "true";
-            }
-            return "false";
+            return value.val.toString();
             break;
          case ClosV:
             return "#<procedure>";
@@ -41,7 +36,6 @@ var test = function(fun, args, expected) {
          print("Failure: Expected "+expected.toSource()+", Got "+e.toSource());
       }
    }
-   
 }
 
 test(serialize, [new ClosV()], "#<procedure>");
