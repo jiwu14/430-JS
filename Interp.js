@@ -22,7 +22,7 @@ var serialize = function(value) {
             throw "Invalid value";
       }
    } else {
-      return value;
+      throw "Not a value";
    }
 }
 
@@ -32,13 +32,13 @@ var serialize = function(value) {
 var test = function(fun, args, expected) {
    let ret;
    try {
-      ret = serialize(fun.apply(null, args));
+      ret = fun.apply(null, args);
       if (ret !== expected) {
-         print("Failure: Expected "+expected+", Got "+ret);
+         print("Failure: Expected "+expected.toSource()+", Got "+ret.toSource());
       }
    } catch(e) {
       if (e !== expected) {
-         print("Failure: Expected "+expected+", Got "+e);
+         print("Failure: Expected "+expected.toSource()+", Got "+e.toSource());
       }
    }
    
@@ -48,6 +48,7 @@ test(serialize, [new ClosV()], "#<procedure>");
 test(serialize, [new NumV(24)], "24");
 test(serialize, [new BoolV(true)], "true");
 test(serialize, [new BoolV(false)], "false");
+test(serialize, [new NumC(7)], "Not a value");
 
 //clone the environment
 var GetCloneEnv = function(env) {
@@ -87,7 +88,7 @@ var interp = function interp(expr, env) {
       if ((typeof env) === 'undefined') {
          throw "Invalid environment";
       }
-
+      
       switch(expr.constructor) {
          case NumC:
             return new NumV(expr.val);
@@ -157,17 +158,104 @@ var interp = function interp(expr, env) {
    }
 }
 
-var testEval = function(expr, expected) {
-   test(interp, [expr, {}], expected);
+var testEval = function(expr, expected, env) {
+   let compute = function() {
+      return serialize(interp(expr, env || {}));
+   }
+   test(compute, [], expected);
 }
 
 testEval(new BinopC("+", new NumC(2), new NumC(7)), "9");
-test(interp, [new IfC(new BinopC("eq?", new BoolC(true), new BoolC(false)),
-                      new NumC(10),
-                      new BinopC("*", new IdC("x"), new IdC("y"))),
-             {x: new NumV(2),
-              y: new NumV(11)}],
-     "22");
+testEval(new IfC(new BinopC("eq?", new BoolC(true), new BoolC(false)),
+                 new NumC(10),
+                 new BinopC("*", new IdC("x"), new IdC("y"))),
+   "22",
+   {x: new NumV(2),
+    y: new NumV(11)});
 testEval(new AppC(new LamC([new IdC("x")], new BinopC("*", new IdC("x"), new NumC(2))),
                [new NumC(70)]), "140");            
+testEval(new AppC(new LamC([new IdC("seven")],
+                        	new AppC(new IdC("seven"), [])),
+              	   [new AppC(new LamC([new IdC("minus")],
+                                     new LamC([],
+                                          	 new AppC(new IdC("minus"),
+                                                     	 [new BinopC("+",
+                                                                 	 new NumC(3),
+                                                                 	 new NumC(10)),
+                                                     	  new BinopC("*",
+                                                                	 new NumC(2),
+                                                                	 new NumC(3))]))),
+                        	 [new LamC([new IdC("x"), new IdC("y")],
+                                     	new BinopC("+",
+                                                  new IdC("x"),
+                                                  new BinopC("*",
+                                                          	 new NumC(-1),
+                                                             new IdC("y"))))])]),
+     	"7");
+testEval(new AppC(new LamC([new IdC("a"), new IdC("b")],
+                            new IfC(new BinopC("eq?",
+                                                new BinopC("<=",
+                                                        	  new IdC("a"),
+                                                           new IdC("b")),
+                                                new BoolC(false)),
+                                    new IdC("z"),
+                                    new IdC("v"))),
+                  [new NumC(9), new NumC(15)]),
+ 	"4",
+   {z: new NumV(10),
+    v: new NumV(4)});
 
+testEval(new AppC(new LamC([new IdC("x"), new IdC("y")],
+                       	new BinopC("+",
+                                  	new IdC("x"),
+                                  	new IdC("y"))),
+             	[new NumC(1), new NumC(2)]),
+     	"3");
+
+testEval(new NumC(50), "50")
+testEval(new BoolC(true), "true")
+testEval(new IfC(new BoolC(false),
+             	new NumC(10),
+             	new BinopC("/", new NumC(6), new NumC(3))), "2")
+testEval(new BinopC("+",
+                	new BinopC("-",
+                           	new BinopC("*",
+                                      	new BinopC("/",
+                                                 	new NumC(2000),
+                                                 	new NumC(40)),
+                                      	new NumC(.5)),
+                           	new NumC(26)),
+                	new NumC(1)),
+     	"0")
+testEval(new BinopC("eq?",
+                	new NumC(1),
+                	new NumC(3)),
+     	"false")
+testEval(new BinopC("eq?",
+                	new BoolC(true),
+                	new BoolC(true)),
+     	"true")
+testEval(new BinopC("eq?",
+                	new BoolC(false),
+                	new NumC(7)),
+     	"false")
+testEval(new BinopC("eq?",
+                	new NumC(7),
+                	new BoolC(true)),
+     	"false")
+testEval(new LamC([], new NumC(7)), "#<procedure>")
+
+
+
+/* Error Testing */
+testEval(new IdC("x"), "Free variable")
+testEval(new BinopC("/", new NumC(7), new NumC(0)), "Divide by zero")
+testEval(new BinopC("*", new BoolC(true), new NumC(7)), "Not a number")
+testEval(new AppC(new LamC([], new NumC(0)), [new NumC(4)]), "Wrong arity")
+testEval(new BinopC("q", new NumC(0), new NumC(0)), "Not a binop")
+testEval(new IfC(new NumC(20), new NumC(6), new BoolC(false)), "Not a boolean")
+testEval(new AppC(new NumC(1), []), "Not a function")
+testEval(new ExprC(), "Invalid expression")
+testEval(new NumV(7), "Not a expression")
+test(interp, [new NumC(7), undefined], "Invalid environment")
+test(interp, [new IdC("x"), {x: new NumC(8)}], "Not a value")
